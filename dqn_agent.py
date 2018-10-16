@@ -21,7 +21,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed):
+    def __init__(self, **kwargs):
         """Initialize an Agent object.
         
         Params
@@ -30,60 +30,50 @@ class Agent():
             action_size (int): dimension of each action
             seed (int): random seed
         """
-        self.state_size = state_size
-        self.action_size = action_size
-        self.seed = random.seed(seed)
+
+        if 'chkpt_file' in kwargs and 'seed' in kwargs:
+            checkpoint = torch.load(kwargs['chkpt_file'])
+            hidden_layers = checkpoint['hidden_layers']
+
+            self.state_size = checkpoint['input_size']
+            self.action_size = checkpoint['output_size']
+            self.seed = random.seed(kwargs['seed'])
+
+        elif 'state_size' in kwargs and 'action_size' in kwargs and 'seed' in kwargs:
+            self.state_size = kwargs['state_size']
+            self.action_size = kwargs['action_size']
+            self.seed = random.seed(kwargs['seed'])
+            hidden_layers = [64, 64]
 
         # Q-Network
-        hidden_layers = [64, 64]
-        self.qnetwork_local = Network(state_size, action_size, seed, hidden_layers).to(device)
+        self.qnetwork_local = Network(self.state_size, self.action_size, self.seed, hidden_layers).to(device)
         print(self.qnetwork_local)
-        self.qnetwork_target = Network(state_size, action_size, seed, hidden_layers).to(device)
+        self.qnetwork_target = Network(self.state_size, self.action_size, self.seed, hidden_layers).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
+        if 'chkpt_file' in kwargs and 'seed' in kwargs:
+            state_dict = checkpoint['state_dict']
+            self.qnetwork_local.load_state_dict(state_dict)
+            self.qnetwork_target.load_state_dict(state_dict)
+        
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
+        self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE, self.seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
-    """    def __init__(self, chkpt_file, seed):
 
-            checkpoint = torch.load(filepath)
-            self.state_size = checkpoint['input_size']
-            self.action_size = checkpoint['output_size']
-            self.seed = random.seed(seed)
-
-            # Q-Network
-            hidden_layers = checkpoint['hidden_layers']
-            self.qnetwork_local = Network(state_size, action_size, seed, hidden_layers).to(device)
-            self.qnetwork_target = Network(state_size, action_size, seed, hidden_layers).to(device)
-            self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
-
-            # Replay memory
-            self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
-            # Initialize time step (for updating every UPDATE_EVERY steps)
-            self.t_step = 0
-
-
-
-            model = fc_model.Network(checkpoint['input_size'],
-                                 checkpoint['output_size'],
-                                 checkpoint['hidden_layers'])
-            model.load_state_dict(checkpoint['state_dict'])
-
-            return model
-    """        
+        
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done)
         
         # Learn every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step + 1) % UPDATE_EVERY
-        if self.t_step == 0:
+        #self.t_step = (self.t_step + 1) % UPDATE_EVERY
+        #if self.t_step == 0:
             # If enough samples are available in memory, get random subset and learn
-            if len(self.memory) > BATCH_SIZE:
-                experiences = self.memory.sample()
-                self.learn(experiences, GAMMA)
+        if len(self.memory) > BATCH_SIZE:
+           experiences = self.memory.sample()
+           self.learn(experiences, GAMMA)
 
     def act(self, state, eps=0.):
         """Returns actions for given state as per current policy.
@@ -131,7 +121,9 @@ class Agent():
         self.optimizer.step()
 
         # ------------------- update target network ------------------- #
-        self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
+        self.t_step = (self.t_step + 1) % UPDATE_EVERY
+        if self.t_step == 0:
+            self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
@@ -145,14 +137,6 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
-
-        checkpoint = {'input_size': self.state_size,
-              'output_size': self.action_size,
-              'hidden_layers': [each.out_features for each in target_model.hidden_layers],
-              'state_dict': target_model.state_dict()}
-        
-        chkpt_file = 'checkpoint_{}.pth'.format(self.t_step)
-        torch.save(checkpoint, 'checkpoint_{}.pth'.format(self.t_step))
         
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
