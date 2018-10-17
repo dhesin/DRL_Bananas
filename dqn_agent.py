@@ -2,7 +2,6 @@ import numpy as np
 import random
 from collections import namedtuple, deque
 
-from model import QNetwork
 from fc_model import Network
 
 import torch
